@@ -236,7 +236,7 @@ if (build_engine_artifacts && !flutter_prebuilt_dart_sdk) {
       deps += [ ":dart_sdk_entitlement_config" ]
       files += [
         {
-          source = "$target_gen_dir/dart_sdk_entitlements.txt"
+          source = rebase_path("$target_gen_dir/dart_sdk_entitlements.txt")
           destination = "entitlements.txt"
         },
       ]
