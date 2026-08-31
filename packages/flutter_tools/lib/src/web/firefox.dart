@@ -115,6 +115,7 @@ class FirefoxLauncher {
       final args = <String>[
         executable,
         ...webBrowserFlags,
+        if (_platform.isWindows) '-wait-for-browser',
         '-no-remote',
         '-profile',
         profile.path,
@@ -220,8 +221,16 @@ class Firefox {
     }
     await _process.exitCode.timeout(
       Duration.zero,
-      onTimeout: () {
-        ProcessSignal.sigterm.kill(_process);
+      onTimeout: () async {
+        if (_platform.isWindows) {
+          try {
+            await _processManager.run(<String>['taskkill', '/T', '/PID', '$pid']);
+          } on Object {
+            // Fall through to force termination below.
+          }
+        } else {
+          ProcessSignal.sigterm.kill(_process);
+        }
         return 0;
       },
     );

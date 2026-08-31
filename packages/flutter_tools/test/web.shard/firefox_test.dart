@@ -117,4 +117,42 @@ void main() {
     );
     expect(fileSystem.systemTempDirectory.listSync(), isEmpty);
   });
+
+  testWithoutContext('waits for and stops the Firefox process tree on Windows', () async {
+    final fileSystem = MemoryFileSystem.test(style: FileSystemStyle.windows);
+    final processExit = Completer<void>();
+    final processManager = FakeProcessManager.list(<FakeCommand>[
+      FakeCommand(
+        command: <Pattern>[
+          'example_firefox',
+          '-wait-for-browser',
+          '-no-remote',
+          '-profile',
+          RegExp(r'flutter_tools_firefox_device\.[^\\]+$'),
+          'http://localhost:1234',
+        ],
+        completer: processExit,
+      ),
+      FakeCommand(
+        command: <Pattern>['taskkill', '/T', '/PID', RegExp(r'\d+')],
+        onRun: (_) => processExit.complete(),
+      ),
+    ]);
+    final launcher = FirefoxLauncher(
+      fileSystem: fileSystem,
+      platform: FakePlatform(
+        operatingSystem: 'windows',
+        environment: <String, String>{kFirefoxEnvironment: 'example_firefox'},
+      ),
+      processManager: processManager,
+      browserFinder: findFirefoxExecutable,
+      logger: BufferLogger.test(),
+    );
+
+    final Firefox firefox = await launcher.launch('http://localhost:1234');
+    await firefox.close();
+
+    expect(processManager, hasNoRemainingExpectations);
+    expect(fileSystem.systemTempDirectory.listSync(), isEmpty);
+  });
 }
