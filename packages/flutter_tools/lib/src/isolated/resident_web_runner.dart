@@ -172,11 +172,6 @@ class ResidentWebRunner extends ResidentRunner {
 
   late final useDwdsWebSocketConnection = flutterDevice!.device is! ChromiumDevice;
 
-  // Firefox on Windows can lose the replacement WebSocket during a page refresh.
-  bool get useSseForInjectedClient =>
-      debuggingOptions.webUseSseForInjectedClient ||
-      (_platform.isWindows && flutterDevice!.device is FirefoxDevice);
-
   @override
   // Web uses a different plugin registry.
   bool get generateDartPluginRegistry => false;
@@ -309,7 +304,7 @@ class ResidentWebRunner extends ResidentRunner {
           urlTunneller: _urlTunneller,
           useSseForDebugProxy: debuggingOptions.webUseSseForDebugProxy,
           useSseForDebugBackend: debuggingOptions.webUseSseForDebugBackend,
-          useSseForInjectedClient: useSseForInjectedClient,
+          useSseForInjectedClient: debuggingOptions.webUseSseForInjectedClient,
           buildInfo: debuggingOptions.buildInfo,
           enableDwds: supportsServiceProtocol,
           ddsConfig: DartDevelopmentServiceConfiguration(

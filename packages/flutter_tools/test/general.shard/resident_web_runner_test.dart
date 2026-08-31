@@ -1781,22 +1781,6 @@ name: my_app
   );
 
   testUsingContext(
-    'uses SSE for the injected Firefox client on Windows',
-    () {
-      flutterDevice.device = FakeFirefoxDevice();
-      final residentWebRunner =
-          setUpResidentRunner(flutterDevice, platform: FakePlatform(operatingSystem: 'windows'))
-              as ResidentWebRunner;
-
-      expect(residentWebRunner.useSseForInjectedClient, isTrue);
-    },
-    overrides: <Type, Generator>{
-      FileSystem: () => fileSystem,
-      ProcessManager: () => processManager,
-    },
-  );
-
-  testUsingContext(
     'cleans up Firefox if its process exits',
     () async {
       final firefoxDevice = FakeFirefoxDevice();
@@ -2416,7 +2400,6 @@ ResidentRunner setUpResidentRunner(
   Logger? logger,
   SystemClock? systemClock,
   DebuggingOptions? debuggingOptions,
-  Platform? platform,
 }) {
   return ResidentWebRunner(
     flutterDevice,
@@ -2427,7 +2410,7 @@ ResidentRunner setUpResidentRunner(
     fileSystem: globals.fs,
     logger: logger ?? BufferLogger.test(),
     terminal: Terminal.test(),
-    platform: platform ?? FakePlatform(),
+    platform: FakePlatform(),
     outputPreferences: OutputPreferences.test(),
   );
 }

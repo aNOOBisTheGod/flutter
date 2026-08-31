@@ -170,6 +170,9 @@ class WebDevFS implements DevFS {
       (AppConnection appConnection) async {
         try {
           if (foundFirstConnection) {
+            // Let DWDS finish assigning the connection before the client can
+            // respond to RunRequest with isolate events.
+            await Future<void>.delayed(Duration.zero);
             appConnection.runMain();
             return;
           }
