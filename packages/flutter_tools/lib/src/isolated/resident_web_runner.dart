@@ -193,7 +193,6 @@ class ResidentWebRunner extends ResidentRunner {
   StreamSubscription<vmservice.Event>? _stdOutSub;
   StreamSubscription<vmservice.Event>? _stdErrSub;
   StreamSubscription<vmservice.Event>? _serviceSub;
-  StreamSubscription<vmservice.Event>? _isolateSub;
   StreamSubscription<vmservice.Event>? _extensionEventSub;
   Future<void>? _cleanupFuture;
   var _exited = false;
@@ -231,7 +230,6 @@ class ResidentWebRunner extends ResidentRunner {
     await _stdOutSub?.cancel();
     await _stdErrSub?.cancel();
     await _serviceSub?.cancel();
-    await _isolateSub?.cancel();
     await _extensionEventSub?.cancel();
 
     if (stopAppDuringCleanup) {
@@ -878,13 +876,6 @@ class ResidentWebRunner extends ResidentRunner {
           _stdOutSub = _vmService.service.onStdoutEvent.listen(onLogEvent);
           _stdErrSub = _vmService.service.onStderrEvent.listen(onLogEvent);
           _serviceSub = _vmService.service.onServiceEvent.listen(_onServiceEvent);
-          if (device is FirefoxDevice) {
-            _isolateSub = _vmService.service.onIsolateEvent.listen((vmservice.Event event) {
-              if (event.kind == vmservice.EventKind.kIsolateExit) {
-                unawaited(_cleanupAndExit());
-              }
-            });
-          }
           try {
             await _vmService.service.streamListen(vmservice.EventStreams.kStdout);
           } on vmservice.RPCError {

@@ -224,7 +224,7 @@ class Firefox {
       onTimeout: () async {
         if (_platform.isWindows) {
           try {
-            await _processManager.run(<String>['taskkill', '/T', '/PID', '$pid']);
+            await _processManager.run(<String>['taskkill', '/F', '/T', '/PID', '$pid']);
           } on Object {
             // Fall through to force termination below.
           }
@@ -237,9 +237,7 @@ class Firefox {
     await _process.exitCode.timeout(
       const Duration(seconds: 5),
       onTimeout: () async {
-        _logger.printWarning(
-          'Failed to exit Firefox (pid: $pid) using SIGTERM. Will force termination instead.',
-        );
+        _logger.printWarning('Failed to exit Firefox (pid: $pid). Will force termination instead.');
         if (_platform.isWindows) {
           try {
             await _processManager.run(<String>['taskkill', '/F', '/T', '/PID', '$pid']);

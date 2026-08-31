@@ -134,7 +134,7 @@ void main() {
         completer: processExit,
       ),
       FakeCommand(
-        command: <Pattern>['taskkill', '/T', '/PID', RegExp(r'\d+')],
+        command: <Pattern>['taskkill', '/F', '/T', '/PID', RegExp(r'\d+')],
         onRun: (_) => processExit.complete(),
       ),
     ]);

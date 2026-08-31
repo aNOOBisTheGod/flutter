@@ -1815,17 +1815,17 @@ name: my_app
       flutterDevice.device = firefoxDevice;
       final ResidentRunner residentWebRunner = setUpResidentRunner(flutterDevice);
       fakeVmServiceHost = FakeVmServiceHost(
-        requests: <VmServiceExpectation>[
-          ...kAttachExpectations,
-          FakeVmServiceStreamResponse(
-            streamId: vm_service.EventStreams.kIsolate,
-            event: vm_service.Event(kind: vm_service.EventKind.kIsolateExit),
-          ),
-        ],
+        requests: <VmServiceExpectation>[...kAttachExpectations],
       );
       setupMocks();
+      final connectionInfoCompleter = Completer<DebugConnectionInfo>();
+      final Future<int?> result = residentWebRunner.run(
+        connectionInfoCompleter: connectionInfoCompleter,
+      );
+      await connectionInfoCompleter.future;
+      debugConnection.completer.complete();
 
-      await residentWebRunner.run();
+      await result;
       expect(firefoxDevice.count, 1);
       expect(fakeVmServiceHost.hasRemainingExpectations, false);
     },
