@@ -437,8 +437,8 @@ abstract class FlutterCommand extends Command<void> {
     argParser.addFlag(
       'web-run-headless',
       help:
-          'Launches the browser in headless mode. Currently only Chrome '
-          'supports this option.',
+          'Launches the browser in headless mode. Currently Chrome and Firefox '
+          'support this option.',
       hide: !verboseHelp,
     );
     argParser.addOption(

@@ -1743,8 +1743,7 @@ name: my_app
       unawaited(residentWebRunner.run(connectionInfoCompleter: connectionInfoCompleter));
       await connectionInfoCompleter.future;
 
-      await residentWebRunner.exit();
-      await residentWebRunner.exit();
+      await Future.wait(<Future<void>>[residentWebRunner.exit(), residentWebRunner.exit()]);
 
       expect(debugConnection.didClose, false);
       expect(fakeVmServiceHost.hasRemainingExpectations, false);
@@ -1772,6 +1771,62 @@ name: my_app
       debugConnection.completer.complete();
 
       await result;
+      expect(fakeVmServiceHost.hasRemainingExpectations, false);
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => fileSystem,
+      ProcessManager: () => processManager,
+      Pub: ThrowingPub.new,
+    },
+  );
+
+  testUsingContext(
+    'cleans up Firefox if its process exits',
+    () async {
+      final firefoxDevice = FakeFirefoxDevice();
+      flutterDevice.device = firefoxDevice;
+      final ResidentRunner residentWebRunner = setUpResidentRunner(flutterDevice);
+      fakeVmServiceHost = FakeVmServiceHost(
+        requests: <VmServiceExpectation>[...kAttachExpectations],
+      );
+      setupMocks();
+      final connectionInfoCompleter = Completer<DebugConnectionInfo>();
+      final Future<int?> result = residentWebRunner.run(
+        connectionInfoCompleter: connectionInfoCompleter,
+      );
+      await connectionInfoCompleter.future;
+      firefoxDevice.exitCompleter.complete(0);
+
+      await result;
+      expect(firefoxDevice.count, 1);
+      expect(fakeVmServiceHost.hasRemainingExpectations, false);
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => fileSystem,
+      ProcessManager: () => processManager,
+      Pub: ThrowingPub.new,
+    },
+  );
+
+  testUsingContext(
+    'cleans up Firefox if its browser connection closes',
+    () async {
+      final firefoxDevice = FakeFirefoxDevice();
+      flutterDevice.device = firefoxDevice;
+      final ResidentRunner residentWebRunner = setUpResidentRunner(flutterDevice);
+      fakeVmServiceHost = FakeVmServiceHost(
+        requests: <VmServiceExpectation>[
+          ...kAttachExpectations,
+          FakeVmServiceStreamResponse(
+            streamId: vm_service.EventStreams.kIsolate,
+            event: vm_service.Event(kind: vm_service.EventKind.kIsolateExit),
+          ),
+        ],
+      );
+      setupMocks();
+
+      await residentWebRunner.run();
+      expect(firefoxDevice.count, 1);
       expect(fakeVmServiceHost.hasRemainingExpectations, false);
     },
     overrides: <Type, Generator>{
@@ -2079,7 +2134,7 @@ flutter:
       await expectLater(
         residentWebRunner.run,
         throwsToolExit(
-          message: 'Failed to establish connection with the application instance in Chrome.',
+          message: 'Failed to establish connection with the application instance in the browser.',
         ),
       );
       expect(logger.errorText, contains('HttpException'));
@@ -2361,6 +2416,13 @@ ResidentRunner setUpResidentRunner(
 }
 
 class FakeWebServerDevice extends FakeDevice implements WebServerDevice {}
+
+class FakeFirefoxDevice extends FakeDevice implements FirefoxDevice {
+  final exitCompleter = Completer<int>();
+
+  @override
+  Future<int>? get browserExit => exitCompleter.future;
+}
 
 class FakeDevice extends Fake implements WebDevice {
   @override

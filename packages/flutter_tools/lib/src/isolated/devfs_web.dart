@@ -135,8 +135,9 @@ class WebDevFS implements DevFS {
   Dwds get dwds => webAssetServer.dwds;
 
   /// Whether middleware should be enabled for this web development server.
-  /// Middleware is enabled when using Chrome device or DDC module system.
-  bool get shouldEnableMiddleware => chromiumLauncher != null || ddcModuleSystem;
+  /// Middleware is enabled when using a browser device or DDC module system.
+  bool get shouldEnableMiddleware =>
+      chromiumLauncher != null || ddcModuleSystem || useDwdsWebSocketConnection;
 
   // A flag to indicate whether we have called `setAssetDirectory` on the target device.
   @override

@@ -115,6 +115,15 @@ void main() {
   );
 
   test(
+    'DWDS WebSocket connections enable middleware',
+    () => testbed.run(() {
+      final WebDevFS webDevFS = createWebDevFS(useDwdsWebSocketConnection: true);
+
+      expect(webDevFS.shouldEnableMiddleware, isTrue);
+    }),
+  );
+
+  test(
     '.log() reports warnings',
     () => testbed.run(() {
       const unresolvedUriMessage = 'Unresolved uri:';

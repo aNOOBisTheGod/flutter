@@ -18,6 +18,7 @@ import '../device_port_forwarder.dart';
 import '../features.dart';
 import '../project.dart';
 import 'chrome.dart';
+import 'firefox.dart';
 
 class WebApplicationPackage extends ApplicationPackage {
   WebApplicationPackage(this.flutterProject) : super(id: flutterProject.manifest.appName);
@@ -127,16 +128,7 @@ abstract class ChromiumDevice extends WebDevice {
   }) async {
     // See [ResidentWebRunner.run] in flutter_tools/lib/src/resident_web_runner.dart
     // for the web initialization and server logic.
-    String url;
-    if (debuggingOptions.webLaunchUrl != null) {
-      if (_isLaunchUrlValid(debuggingOptions.webLaunchUrl!)) {
-        url = debuggingOptions.webLaunchUrl!;
-      } else {
-        throwToolExit('"${debuggingOptions.webLaunchUrl}" is not a valid HTTP URL.');
-      }
-    } else {
-      url = platformArgs['uri']! as String;
-    }
+    final String url = _resolveLaunchUrl(debuggingOptions, platformArgs);
     final launchChrome = platformArgs['no-launch-chrome'] != true;
     if (launchChrome) {
       _chrome = await chromeLauncher.launch(
@@ -151,11 +143,6 @@ abstract class ChromiumDevice extends WebDevice {
     }
     _logger.sendEvent('app.webLaunchUrl', <String, Object>{'url': url, 'launched': launchChrome});
     return LaunchResult.succeeded(vmServiceUri: Uri.parse(url));
-  }
-
-  bool _isLaunchUrlValid(String url) {
-    final pattern = RegExp(r'^(https?:\/\/)[^\s]+');
-    return pattern.hasMatch(url);
   }
 
   @override
@@ -176,6 +163,140 @@ abstract class ChromiumDevice extends WebDevice {
   bool isSupportedForProject(FlutterProject flutterProject) {
     return flutterProject.web.existsSync();
   }
+
+  @override
+  Future<void> dispose() async {
+    _logReader?.dispose();
+    await portForwarder?.dispose();
+  }
+}
+
+/// The Mozilla Firefox browser using the DWDS WebSocket connection.
+class FirefoxDevice extends WebDevice {
+  FirefoxDevice({
+    required this.firefoxLauncher,
+    required ProcessManager processManager,
+    required super.logger,
+  }) : _processManager = processManager,
+       _logger = logger,
+       super(kFirefoxDeviceId);
+
+  static const kFirefoxDeviceId = 'firefox';
+  static const kFirefoxDeviceName = 'Firefox';
+
+  final FirefoxLauncher firefoxLauncher;
+  final ProcessManager _processManager;
+  final Logger _logger;
+  Firefox? _firefox;
+  DeviceLogReader? _logReader;
+
+  /// Resolves when the Firefox process exits, if Firefox has been launched.
+  Future<int>? get browserExit => _firefox?.onExit;
+
+  @override
+  String get name => kFirefoxDeviceName;
+
+  @override
+  bool get supportsFlutterExit => false;
+
+  @override
+  bool get supportsStartPaused => false;
+
+  @override
+  bool supportsRuntimeMode(BuildMode buildMode) => buildMode != BuildMode.jitRelease;
+
+  @override
+  void clearLogs() {}
+
+  @override
+  DeviceLogReader getLogReader({ApplicationPackage? app, bool includePastLogs = false}) {
+    return _logReader ??= NoOpDeviceLogReader(app?.name);
+  }
+
+  @override
+  Future<bool> installApp(ApplicationPackage app, {String? userIdentifier}) async => true;
+
+  @override
+  Future<bool> isAppInstalled(ApplicationPackage app, {String? userIdentifier}) async => true;
+
+  @override
+  Future<bool> isLatestBuildInstalled(ApplicationPackage app) async => true;
+
+  @override
+  Future<bool> get isLocalEmulator async => false;
+
+  @override
+  Future<String?> get emulatorId async => null;
+
+  @override
+  Future<bool> isSupported() async => firefoxLauncher.canFindExecutable();
+
+  @override
+  DevicePortForwarder? get portForwarder => const NoOpDevicePortForwarder();
+
+  @override
+  late final Future<String> sdkNameAndVersion = _computeSdkNameAndVersion();
+
+  Future<String> _computeSdkNameAndVersion() async {
+    if (!await isSupported()) {
+      return 'unknown';
+    }
+    final ProcessResult result = await _processManager.run(<String>[
+      firefoxLauncher.findExecutable(),
+      '--version',
+    ]);
+    return result.exitCode == 0 ? (result.stdout as String).trim() : 'unknown';
+  }
+
+  @override
+  Future<LaunchResult> startApp(
+    ApplicationPackage? package, {
+    String? mainPath,
+    String? route,
+    required DebuggingOptions debuggingOptions,
+    Map<String, Object?> platformArgs = const <String, Object?>{},
+    bool prebuiltApplication = false,
+    String? userIdentifier,
+  }) async {
+    final String url = _resolveLaunchUrl(debuggingOptions, platformArgs);
+    final launchFirefox = platformArgs['no-launch-chrome'] != true;
+    if (debuggingOptions.webBrowserDebugPort != null) {
+      _logger.printWarning('--web-browser-debug-port is not supported by the Firefox device.');
+    }
+    if (launchFirefox) {
+      if (_firefox != null) {
+        throwToolExit('Only one instance of Firefox can be started.');
+      }
+      _firefox = await firefoxLauncher.launch(
+        url,
+        headless: debuggingOptions.webRunHeadless,
+        webBrowserFlags: debuggingOptions.webBrowserFlags,
+      );
+      _logger.printStatus(
+        'Firefox debugging is limited. Breakpoints, stepping, and expression evaluation are not '
+        'supported.',
+      );
+    }
+    _logger.sendEvent('app.webLaunchUrl', <String, Object>{'url': url, 'launched': launchFirefox});
+    return LaunchResult.succeeded(vmServiceUri: Uri.parse(url));
+  }
+
+  @override
+  Future<bool> stopApp(ApplicationPackage? app, {String? userIdentifier}) async {
+    final Future<void>? future = _firefox?.close();
+    _firefox = null;
+    await future;
+    return true;
+  }
+
+  @override
+  Future<TargetPlatform> get targetPlatform async => TargetPlatform.web_javascript;
+
+  @override
+  Future<bool> uninstallApp(ApplicationPackage app, {String? userIdentifier}) async => true;
+
+  @override
+  bool isSupportedForProject(FlutterProject flutterProject) => flutterProject.web.existsSync();
 
   @override
   Future<void> dispose() async {
@@ -326,6 +447,17 @@ class WebDevices extends PollingDeviceDiscovery {
         logger: logger,
       ),
     );
+    _firefoxDevice = FirefoxDevice(
+      firefoxLauncher: FirefoxLauncher(
+        fileSystem: fileSystem,
+        platform: platform,
+        processManager: processManager,
+        browserFinder: findFirefoxExecutable,
+        logger: logger,
+      ),
+      processManager: processManager,
+      logger: logger,
+    );
     if (platform.isWindows) {
       _edgeDevice = MicrosoftEdgeDevice(
         chromiumLauncher: ChromiumLauncher(
@@ -344,6 +476,7 @@ class WebDevices extends PollingDeviceDiscovery {
   }
 
   late final GoogleChromeDevice _chromeDevice;
+  late final FirefoxDevice _firefoxDevice;
   final WebServerDevice _webServerDevice;
   MicrosoftEdgeDevice? _edgeDevice;
   final FeatureFlags _featureFlags;
@@ -363,6 +496,7 @@ class WebDevices extends PollingDeviceDiscovery {
     return <Device>[
       if (WebServerDevice.showWebServerDevice) _webServerDevice,
       if (await _chromeDevice.isSupported()) _chromeDevice,
+      if (await _firefoxDevice.isSupported()) _firefoxDevice,
       if (edgeDevice != null && await edgeDevice._meetsVersionConstraint()) edgeDevice,
     ];
   }
@@ -371,7 +505,22 @@ class WebDevices extends PollingDeviceDiscovery {
   bool get supportsPlatform => _featureFlags.isWebEnabled;
 
   @override
-  List<String> get wellKnownIds => const <String>['chrome', 'web-server', 'edge'];
+  List<String> get wellKnownIds => const <String>['chrome', 'web-server', 'edge', 'firefox'];
+}
+
+String _resolveLaunchUrl(DebuggingOptions debuggingOptions, Map<String, Object?> platformArgs) {
+  if (debuggingOptions.webLaunchUrl case final String webLaunchUrl) {
+    if (!_isLaunchUrlValid(webLaunchUrl)) {
+      throwToolExit('"$webLaunchUrl" is not a valid HTTP URL.');
+    }
+    return webLaunchUrl;
+  }
+  return platformArgs['uri']! as String;
+}
+
+bool _isLaunchUrlValid(String url) {
+  final pattern = RegExp(r'^(https?:\/\/)[^\s]+');
+  return pattern.hasMatch(url);
 }
 
 /// A special device type to allow serving for arbitrary browsers.

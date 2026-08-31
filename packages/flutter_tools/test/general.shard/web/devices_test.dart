@@ -11,6 +11,7 @@ import 'package:flutter_tools/src/base/platform.dart';
 import 'package:flutter_tools/src/build_info.dart';
 import 'package:flutter_tools/src/device.dart';
 import 'package:flutter_tools/src/web/chrome.dart';
+import 'package:flutter_tools/src/web/firefox.dart';
 import 'package:flutter_tools/src/web/web_device.dart';
 import 'package:meta/meta.dart';
 import 'package:test/fake.dart';
@@ -115,6 +116,100 @@ void main() {
     expect(chromeDevice.supportsRuntimeMode(BuildMode.jitRelease), false);
   });
 
+  testWithoutContext('FirefoxDevice defaults', () async {
+    final fileSystem = MemoryFileSystem.test();
+    final processManager = FakeProcessManager.any();
+    final firefoxDevice = FirefoxDevice(
+      firefoxLauncher: FirefoxLauncher(
+        fileSystem: fileSystem,
+        platform: FakePlatform(),
+        processManager: processManager,
+        browserFinder: findFirefoxExecutable,
+        logger: BufferLogger.test(),
+      ),
+      processManager: processManager,
+      logger: BufferLogger.test(),
+    );
+
+    expect(firefoxDevice.name, 'Firefox');
+    expect(firefoxDevice.id, 'firefox');
+    expect(firefoxDevice.supportsHotReload, true);
+    expect(firefoxDevice.supportsHotRestart, true);
+    expect(firefoxDevice.supportsStartPaused, false);
+    expect(firefoxDevice.supportsFlutterExit, false);
+    expect(firefoxDevice.supportsScreenshot, false);
+    expect(firefoxDevice.browserExit, isNull);
+    expect(await firefoxDevice.isLocalEmulator, false);
+    expect(firefoxDevice.getLogReader(), isA<NoOpDeviceLogReader>());
+    expect(await firefoxDevice.portForwarder!.forward(1), 1);
+
+    expect(firefoxDevice.supportsRuntimeMode(BuildMode.debug), true);
+    expect(firefoxDevice.supportsRuntimeMode(BuildMode.profile), true);
+    expect(firefoxDevice.supportsRuntimeMode(BuildMode.release), true);
+    expect(firefoxDevice.supportsRuntimeMode(BuildMode.jitRelease), false);
+  });
+
+  testWithoutContext('FirefoxDevice launches and stops Firefox', () async {
+    final firefox = _OnceClosableFirefox();
+    final launcher = TestFirefoxLauncher(firefox);
+    final logger = BufferLogger.test();
+    final firefoxDevice = FirefoxDevice(
+      firefoxLauncher: launcher,
+      processManager: FakeProcessManager.any(),
+      logger: logger,
+    );
+
+    final LaunchResult launchResult = await firefoxDevice.startApp(
+      null,
+      debuggingOptions: DebuggingOptions.enabled(
+        BuildInfo.debug,
+        webRunHeadless: true,
+        webBrowserDebugPort: 1234,
+        webBrowserFlags: <String>['--private-window'],
+      ),
+      platformArgs: <String, Object?>{'uri': 'http://localhost:5678'},
+    );
+
+    expect(launcher.url, 'http://localhost:5678');
+    expect(launcher.headless, isTrue);
+    expect(launcher.webBrowserFlags, <String>['--private-window']);
+    expect(launchResult.vmServiceUri, Uri.parse('http://localhost:5678'));
+    expect(firefoxDevice.browserExit, same(firefox.onExit));
+    expect(logger.warningText, contains('--web-browser-debug-port is not supported'));
+    expect(logger.statusText, contains('Firefox debugging is limited'));
+    await expectLater(
+      () => firefoxDevice.startApp(
+        null,
+        debuggingOptions: DebuggingOptions.enabled(BuildInfo.debug),
+        platformArgs: <String, Object?>{'uri': 'http://localhost:5678'},
+      ),
+      throwsToolExit(message: 'Only one instance of Firefox can be started.'),
+    );
+
+    await firefoxDevice.stopApp(null);
+    await firefoxDevice.stopApp(null);
+    expect(firefox.closeCount, 1);
+  });
+
+  testWithoutContext('FirefoxDevice can expose a URL without launching Firefox', () async {
+    final launcher = TestFirefoxLauncher(_OnceClosableFirefox());
+    final firefoxDevice = FirefoxDevice(
+      firefoxLauncher: launcher,
+      processManager: FakeProcessManager.any(),
+      logger: BufferLogger.test(),
+    );
+
+    final LaunchResult launchResult = await firefoxDevice.startApp(
+      null,
+      debuggingOptions: DebuggingOptions.enabled(BuildInfo.debug),
+      platformArgs: <String, Object?>{'uri': 'http://localhost:5678', 'no-launch-chrome': true},
+    );
+
+    expect(launcher.url, isNull);
+    expect(launchResult.vmServiceUri, Uri.parse('http://localhost:5678'));
+    expect(firefoxDevice.browserExit, isNull);
+  });
+
   testWithoutContext('Server defaults', () async {
     final device = WebServerDevice(logger: BufferLogger.test());
 
@@ -179,7 +274,7 @@ void main() {
     expect(await webDevices.pollingGetDevices(), contains(isA<GoogleChromeDevice>()));
   });
 
-  testWithoutContext('Has well known device ids chrome, edge, and web-server', () async {
+  testWithoutContext('Firefox device is listed when Firefox can be run', () async {
     final webDevices = WebDevices(
       featureFlags: TestFeatureFlags(isWebEnabled: true),
       fileSystem: MemoryFileSystem.test(),
@@ -188,7 +283,19 @@ void main() {
       processManager: FakeProcessManager.any(),
     );
 
-    expect(webDevices.wellKnownIds, <String>['chrome', 'web-server', 'edge']);
+    expect(await webDevices.pollingGetDevices(), contains(isA<FirefoxDevice>()));
+  });
+
+  testWithoutContext('Has well known web device ids', () async {
+    final webDevices = WebDevices(
+      featureFlags: TestFeatureFlags(isWebEnabled: true),
+      fileSystem: MemoryFileSystem.test(),
+      logger: BufferLogger.test(),
+      platform: FakePlatform(environment: <String, String>{}),
+      processManager: FakeProcessManager.any(),
+    );
+
+    expect(webDevices.wellKnownIds, <String>['chrome', 'web-server', 'edge', 'firefox']);
   });
 
   testWithoutContext('Chrome device is not listed when Chrome cannot be run', () async {
@@ -203,6 +310,20 @@ void main() {
     );
 
     expect(await webDevices.pollingGetDevices(), isNot(contains(isA<GoogleChromeDevice>())));
+  });
+
+  testWithoutContext('Firefox device is not listed when Firefox cannot be run', () async {
+    final processManager = FakeProcessManager.empty();
+    processManager.excludedExecutables = <String>{kLinuxFirefoxExecutable};
+    final webDevices = WebDevices(
+      featureFlags: TestFeatureFlags(isWebEnabled: true),
+      fileSystem: MemoryFileSystem.test(),
+      logger: BufferLogger.test(),
+      platform: FakePlatform(environment: <String, String>{}),
+      processManager: processManager,
+    );
+
+    expect(await webDevices.pollingGetDevices(), isNot(contains(isA<FirefoxDevice>())));
   });
 
   testWithoutContext('Web Server device is listed if enabled via showWebServerDevice', () async {
@@ -467,6 +588,27 @@ class TestChromiumLauncher implements ChromiumLauncher {
   }
 }
 
+class TestFirefoxLauncher extends Fake implements FirefoxLauncher {
+  TestFirefoxLauncher(this.firefox);
+
+  final Firefox firefox;
+  String? url;
+  bool? headless;
+  List<String>? webBrowserFlags;
+
+  @override
+  Future<Firefox> launch(
+    String url, {
+    bool headless = false,
+    List<String> webBrowserFlags = const <String>[],
+  }) async {
+    this.url = url;
+    this.headless = headless;
+    this.webBrowserFlags = webBrowserFlags;
+    return firefox;
+  }
+}
+
 class _FakeChromiumDevice extends ChromiumDevice {
   _FakeChromiumDevice({
     required ChromiumLauncher chromiumLauncher,
@@ -490,6 +632,19 @@ class _OnceClosableChromium extends Fake implements Chromium {
       throw Exception('Already closed');
     }
     _closed = true;
+  }
+}
+
+class _OnceClosableFirefox extends Fake implements Firefox {
+  final Completer<int> exitCompleter = Completer<int>();
+  var closeCount = 0;
+
+  @override
+  Future<int> get onExit => exitCompleter.future;
+
+  @override
+  Future<void> close() async {
+    closeCount += 1;
   }
 }
 

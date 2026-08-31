@@ -90,7 +90,7 @@ class DwdsWebRunnerFactory extends WebRunnerFactory {
 
 const kExitMessage =
     'Failed to establish connection with the application '
-    'instance in Chrome.\nThis can happen if the websocket connection used by the '
+    'instance in the browser.\nThis can happen if the websocket connection used by the '
     'web tooling is unable to correctly establish a connection, for example due to a firewall.';
 
 const kNoClientConnectedMessage = 'Recompile complete. No client connected.';
@@ -193,7 +193,9 @@ class ResidentWebRunner extends ResidentRunner {
   StreamSubscription<vmservice.Event>? _stdOutSub;
   StreamSubscription<vmservice.Event>? _stdErrSub;
   StreamSubscription<vmservice.Event>? _serviceSub;
+  StreamSubscription<vmservice.Event>? _isolateSub;
   StreamSubscription<vmservice.Event>? _extensionEventSub;
+  Future<void>? _cleanupFuture;
   var _exited = false;
   WipConnection? _wipConnection;
   ChromiumLauncher? _chromiumLauncher;
@@ -220,13 +222,16 @@ class ResidentWebRunner extends ResidentRunner {
     await _cleanup();
   }
 
-  Future<void> _cleanup() async {
+  Future<void> _cleanup() => _cleanupFuture ??= _performCleanup();
+
+  Future<void> _performCleanup() async {
     if (_exited) {
       return;
     }
     await _stdOutSub?.cancel();
     await _stdErrSub?.cancel();
     await _serviceSub?.cancel();
+    await _isolateSub?.cancel();
     await _extensionEventSub?.cancel();
 
     if (stopAppDuringCleanup) {
@@ -374,12 +379,19 @@ class ResidentWebRunner extends ResidentRunner {
         // 2. `webDevFS.connect()` has begun listening for connected applications
         //    so early connections are not dropped.
         webDevFS.markReady();
-        await flutterDevice!.device!.startApp(
+        final Device device = flutterDevice!.device!;
+        await device.startApp(
           package,
           mainPath: target,
           debuggingOptions: debuggingOptions,
           platformArgs: <String, Object?>{...platformArgs, 'uri': url.toString()},
         );
+        if (device is FirefoxDevice) {
+          final Future<int>? browserExit = device.browserExit;
+          if (browserExit != null) {
+            unawaited(browserExit.whenComplete(_cleanupAndExit));
+          }
+        }
         return attach(
           connectionInfoCompleter: connectionInfoCompleter,
           appStartedCompleter: appStartedCompleter,
@@ -862,9 +874,17 @@ class ResidentWebRunner extends ResidentRunner {
             }
           }
 
+          final Device device = flutterDevice!.device!;
           _stdOutSub = _vmService.service.onStdoutEvent.listen(onLogEvent);
           _stdErrSub = _vmService.service.onStderrEvent.listen(onLogEvent);
           _serviceSub = _vmService.service.onServiceEvent.listen(_onServiceEvent);
+          if (device is FirefoxDevice) {
+            _isolateSub = _vmService.service.onIsolateEvent.listen((vmservice.Event event) {
+              if (event.kind == vmservice.EventKind.kIsolateExit) {
+                unawaited(_cleanupAndExit());
+              }
+            });
+          }
           try {
             await _vmService.service.streamListen(vmservice.EventStreams.kStdout);
           } on vmservice.RPCError {
@@ -889,7 +909,6 @@ class ResidentWebRunner extends ResidentRunner {
             // It is safe to ignore this error because we expect an error to be
             // thrown if we're not already subscribed.
           }
-          final Device device = flutterDevice!.device!;
           await setUpVmService(
             reloadSources: (String isolateId, {bool? force, bool? pause}) async {
               await restart(pause: pause);
