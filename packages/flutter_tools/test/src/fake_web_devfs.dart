@@ -156,14 +156,22 @@ class FakeDwds extends Fake implements Dwds {
   final Stream<AppConnection> connectedApps;
 
   @override
-  Future<DebugConnection> debugConnection(AppConnection appConnection) =>
-      Future<DebugConnection>.value(FakeDebugConnection());
+  Future<DebugConnection> debugConnection(AppConnection appConnection) {
+    debugConnectionCount += 1;
+    return Future<DebugConnection>.value(FakeDebugConnection());
+  }
+
+  var debugConnectionCount = 0;
 }
 
 /// A fake [AppConnection] for testing.
 class FakeAppConnection extends Fake implements AppConnection {
+  var runMainCalled = false;
+
   @override
-  void runMain() {}
+  void runMain() {
+    runMainCalled = true;
+  }
 }
 
 /// A fake [DebugConnection] for testing.

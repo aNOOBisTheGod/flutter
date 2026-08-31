@@ -169,19 +169,19 @@ class WebDevFS implements DevFS {
     _connectedApps = dwds.connectedApps.listen(
       (AppConnection appConnection) async {
         try {
+          if (foundFirstConnection) {
+            appConnection.runMain();
+            return;
+          }
+          foundFirstConnection = true;
           final DebugConnection debugConnection = useDebugExtension
               ? await (_cachedExtensionFuture ??= dwds.extensionDebugConnections.stream.first)
               : await dwds.debugConnection(appConnection);
-          if (foundFirstConnection) {
-            appConnection.runMain();
-          } else {
-            foundFirstConnection = true;
-            final vm_service.VmService vmService = await vmServiceFactory(
-              Uri.parse(debugConnection.uri),
-              logger: logger,
-            );
-            firstConnection.complete(ConnectionResult(appConnection, debugConnection, vmService));
-          }
+          final vm_service.VmService vmService = await vmServiceFactory(
+            Uri.parse(debugConnection.uri),
+            logger: logger,
+          );
+          firstConnection.complete(ConnectionResult(appConnection, debugConnection, vmService));
         } on Exception catch (error, stackTrace) {
           if (!firstConnection.isCompleted) {
             firstConnection.completeError(error, stackTrace);

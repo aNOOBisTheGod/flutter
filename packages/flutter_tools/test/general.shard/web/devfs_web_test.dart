@@ -1476,13 +1476,12 @@ void main() {
         webDevFS.stackTraceMapper.createSync(recursive: true);
         final firstConnection = FakeAppConnection();
         final secondConnection = FakeAppConnection();
+        late FakeDwds fakeDwds;
 
         final Future<void> done = webDevFS.create().then<void>((Uri _) {
           // In non-test mode, webDevFS.create() would have initialized DWDS
-          webDevFS.webAssetServer.dwds = FakeDwds(<AppConnection>[
-            firstConnection,
-            secondConnection,
-          ]);
+          fakeDwds = FakeDwds(<AppConnection>[firstConnection, secondConnection]);
+          webDevFS.webAssetServer.dwds = fakeDwds;
 
           var vmServiceFactoryInvocationCount = 0;
           Future<vm_service.VmService> vmServiceFactory(
@@ -1508,7 +1507,10 @@ void main() {
         });
         time.elapse(const Duration(seconds: 1));
         time.elapse(const Duration(seconds: 2));
-        return done;
+        return done.then((_) {
+          expect(fakeDwds.debugConnectionCount, 1);
+          expect(secondConnection.runMainCalled, isTrue);
+        });
       });
     }, overrides: <Type, Generator>{Artifacts: () => Artifacts.test()}),
   );
