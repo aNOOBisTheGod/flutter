@@ -189,6 +189,7 @@ void main() {
     await firefoxDevice.stopApp(null);
     await firefoxDevice.stopApp(null);
     expect(firefox.closeCount, 1);
+    expect(firefoxDevice.browserExit, isNull);
   });
 
   testWithoutContext('FirefoxDevice can expose a URL without launching Firefox', () async {
@@ -208,6 +209,36 @@ void main() {
     expect(launcher.url, isNull);
     expect(launchResult.vmServiceUri, Uri.parse('http://localhost:5678'));
     expect(firefoxDevice.browserExit, isNull);
+  });
+
+  testWithoutContext('FirefoxDevice can relaunch after Firefox exits', () async {
+    final firstFirefox = _OnceClosableFirefox();
+    final secondFirefox = _OnceClosableFirefox();
+    final launcher = TestFirefoxLauncher(firstFirefox, launches: <Firefox>[secondFirefox]);
+    final firefoxDevice = FirefoxDevice(
+      firefoxLauncher: launcher,
+      processManager: FakeProcessManager.any(),
+      logger: BufferLogger.test(),
+    );
+    final debuggingOptions = DebuggingOptions.enabled(BuildInfo.debug);
+    final platformArgs = <String, Object?>{'uri': 'http://localhost:5678'};
+
+    await firefoxDevice.startApp(
+      null,
+      debuggingOptions: debuggingOptions,
+      platformArgs: platformArgs,
+    );
+    firstFirefox.exitCompleter.complete(0);
+    await firstFirefox.onExit;
+    expect(firefoxDevice.browserExit, same(firstFirefox.onExit));
+    await firefoxDevice.startApp(
+      null,
+      debuggingOptions: debuggingOptions,
+      platformArgs: platformArgs,
+    );
+
+    expect(firefoxDevice.browserExit, same(secondFirefox.onExit));
+    await firefoxDevice.stopApp(null);
   });
 
   testWithoutContext('Server defaults', () async {
@@ -589,9 +620,10 @@ class TestChromiumLauncher implements ChromiumLauncher {
 }
 
 class TestFirefoxLauncher extends Fake implements FirefoxLauncher {
-  TestFirefoxLauncher(this.firefox);
+  TestFirefoxLauncher(Firefox firefox, {List<Firefox> launches = const <Firefox>[]})
+    : _launches = <Firefox>[firefox, ...launches];
 
-  final Firefox firefox;
+  final List<Firefox> _launches;
   String? url;
   bool? headless;
   List<String>? webBrowserFlags;
@@ -605,7 +637,7 @@ class TestFirefoxLauncher extends Fake implements FirefoxLauncher {
     this.url = url;
     this.headless = headless;
     this.webBrowserFlags = webBrowserFlags;
-    return firefox;
+    return _launches.removeAt(0);
   }
 }
 
@@ -637,7 +669,7 @@ class _OnceClosableChromium extends Fake implements Chromium {
 
 class _OnceClosableFirefox extends Fake implements Firefox {
   final Completer<int> exitCompleter = Completer<int>();
-  var closeCount = 0;
+  int closeCount = 0;
 
   @override
   Future<int> get onExit => exitCompleter.future;

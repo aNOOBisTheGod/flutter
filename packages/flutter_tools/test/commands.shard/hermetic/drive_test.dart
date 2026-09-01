@@ -103,6 +103,41 @@ void main() {
   );
 
   testUsingContext(
+    'Firefox drive uses the web driver service',
+    () async {
+      final capturingDriverService = CapturingDriverService();
+      final flutterDriverFactory = CapturingFlutterDriverFactory(capturingDriverService);
+      final command = DriveCommand(
+        fileSystem: fileSystem,
+        logger: logger,
+        platform: platform,
+        terminal: terminal,
+        outputPreferences: outputPreferences,
+        signals: signals,
+        flutterDriverFactory: flutterDriverFactory,
+      );
+
+      fileSystem.file('lib/main.dart').createSync(recursive: true);
+      fileSystem.file('test_driver/main_test.dart').createSync(recursive: true);
+      fileSystem.file('pubspec.yaml').createSync();
+      fileSystem.file('web/index.html').createSync(recursive: true);
+
+      fakeDeviceManager.attachedDevices = <Device>[FakeFirefoxDriveDevice()];
+
+      await createTestCommandRunner(command).run(<String>['drive', '--no-pub', '-d', 'firefox']);
+
+      expect(flutterDriverFactory.web, isTrue);
+      expect(capturingDriverService.platformArgs, containsPair('no-launch-chrome', true));
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
+      Pub: () => FakePub(),
+      DeviceManager: () => fakeDeviceManager,
+    },
+  );
+
+  testUsingContext(
     'fails if the specified --target is not found',
     () async {
       final command = DriveCommand(
@@ -1053,9 +1088,13 @@ class CapturingFlutterDriverFactory extends Fake implements FlutterDriverFactory
   CapturingFlutterDriverFactory(this.driverService);
 
   final CapturingDriverService driverService;
+  bool? web;
 
   @override
-  DriverService createDriverService(bool web) => driverService;
+  DriverService createDriverService(bool web) {
+    this.web = web;
+    return driverService;
+  }
 }
 
 /// A [DriverService] that will return a Future from [startTest] that will never complete.
@@ -1230,6 +1269,17 @@ class FakeChromiumDriveDevice extends Fake implements ChromiumDevice {
 
   @override
   bool supportsRuntimeMode(BuildMode buildMode) => true;
+}
+
+class FakeFirefoxDriveDevice extends FakeChromiumDriveDevice implements FirefoxDevice {
+  @override
+  String get id => 'firefox';
+
+  @override
+  String get name => 'Firefox';
+
+  @override
+  Future<String> get sdkNameAndVersion async => 'Mozilla Firefox 0.0';
 }
 
 class FakeSignals extends Fake implements Signals {

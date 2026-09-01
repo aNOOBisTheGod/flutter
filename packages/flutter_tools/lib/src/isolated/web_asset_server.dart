@@ -63,6 +63,12 @@ typedef DwdsLauncher =
       bool useDwdsWebSocketConnection,
     });
 
+const _kResetDwdsInstanceId = '''
+try {
+  window.sessionStorage.removeItem('dartAppInstanceId');
+} catch (_) {}
+''';
+
 /// A web server which handles serving JavaScript and assets.
 ///
 /// This is only used in development mode.
@@ -618,6 +624,9 @@ class WebAssetServer implements AssetReader {
 
   /// Write a single file into the in-memory cache.
   void writeFile(String filePath, String contents) {
+    if (resetDwdsInstanceId && filePath == 'main.dart.js') {
+      contents = '$_kResetDwdsInstanceId$contents';
+    }
     writeBytes(filePath, const Utf8Encoder().convert(contents));
   }
 
@@ -703,11 +712,7 @@ _flutter.buildConfig = ${jsonEncode(buildConfig)};
     if (!resetDwdsInstanceId) {
       return content;
     }
-    return '''
-try {
-  window.sessionStorage.removeItem('dartAppInstanceId');
-} catch (_) {}
-$content''';
+    return '$_kResetDwdsInstanceId$content';
   }
 
   shelf.Response _serveFlutterBootstrapJs() {

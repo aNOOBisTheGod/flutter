@@ -171,17 +171,23 @@ class WebDevFS implements DevFS {
     _connectedApps = dwds.connectedApps.listen(
       (AppConnection appConnection) async {
         try {
-          if (foundFirstConnection) {
+          final bool isFirstConnection = !foundFirstConnection;
+          if (isFirstConnection) {
+            foundFirstConnection = true;
+          } else if (useDwdsWebSocketConnection) {
             // Let DWDS finish assigning the connection before the client can
             // respond to RunRequest with isolate events.
             await Future<void>.delayed(Duration.zero);
             appConnection.runMain();
             return;
           }
-          foundFirstConnection = true;
           final DebugConnection debugConnection = useDebugExtension
               ? await (_cachedExtensionFuture ??= dwds.extensionDebugConnections.stream.first)
               : await dwds.debugConnection(appConnection);
+          if (!isFirstConnection) {
+            appConnection.runMain();
+            return;
+          }
           final vm_service.VmService vmService = await vmServiceFactory(
             Uri.parse(debugConnection.uri),
             logger: logger,

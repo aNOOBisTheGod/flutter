@@ -550,6 +550,36 @@ void main() {
   );
 
   test(
+    'resets the DWDS instance ID in legacy main.dart.js when requested',
+    () => testbed.run(() async {
+      webAssetServer = WebAssetServer(
+        httpServer,
+        packages,
+        InternetAddress.loopbackIPv4,
+        <String, String>{},
+        <String, String>{},
+        usesDdcModuleSystem,
+        canaryFeatures,
+        webRenderer: WebRendererMode.canvaskit,
+        useLocalCanvasKit: false,
+        fileSystem: globals.fs,
+        logger: logger,
+        resetDwdsInstanceId: true,
+      );
+      webAssetServer.writeFile('main.dart.js', 'main();');
+
+      final Response response = await webAssetServer.handleRequest(
+        Request('GET', Uri.parse('http://foobar/main.dart.js')),
+      );
+
+      expect(response.statusCode, 200);
+      final String body = await response.readAsString();
+      expect(body, contains("window.sessionStorage.removeItem('dartAppInstanceId');"));
+      expect(body, endsWith('main();'));
+    }),
+  );
+
+  test(
     'serves flutter_bootstrap.js with useLocalCanvasKit',
     () => testbed.run(() async {
       globals.fs.file(
@@ -1547,7 +1577,7 @@ void main() {
         time.elapse(const Duration(seconds: 1));
         time.elapse(const Duration(seconds: 2));
         return done.then((_) {
-          expect(fakeDwds.debugConnectionCount, 1);
+          expect(fakeDwds.debugConnectionCount, 2);
           expect(secondConnection.runMainCalled, isTrue);
         });
       });

@@ -340,9 +340,7 @@ class DriveCommand extends RunCommandBase {
       _logger.printError('Screenshot not supported for ${device.displayName}.');
     }
 
-    final WebDevServerConfig? webDevServerConfig =
-        // TODO(kevmoo): Not sure why we're not just checking `WebDevice` here
-        (device is WebServerDevice || device is ChromiumDevice)
+    final WebDevServerConfig? webDevServerConfig = device is WebDevice
         ? await webDevServerConfigCore()
         : null;
 

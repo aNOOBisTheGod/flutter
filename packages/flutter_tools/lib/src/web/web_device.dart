@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:process/process.dart';
 
 import '../application_package.dart';
@@ -188,10 +190,11 @@ class FirefoxDevice extends WebDevice {
   final ProcessManager _processManager;
   final Logger _logger;
   Firefox? _firefox;
+  Future<int>? _browserExit;
   DeviceLogReader? _logReader;
 
   /// Resolves when the Firefox process exits, if Firefox has been launched.
-  Future<int>? get browserExit => _firefox?.onExit;
+  Future<int>? get browserExit => _browserExit;
 
   @override
   String get name => kFirefoxDeviceName;
@@ -267,10 +270,19 @@ class FirefoxDevice extends WebDevice {
       if (_firefox != null) {
         throwToolExit('Only one instance of Firefox can be started.');
       }
-      _firefox = await firefoxLauncher.launch(
+      final Firefox firefox = await firefoxLauncher.launch(
         url,
         headless: debuggingOptions.webRunHeadless,
         webBrowserFlags: debuggingOptions.webBrowserFlags,
+      );
+      _firefox = firefox;
+      _browserExit = firefox.onExit;
+      unawaited(
+        _browserExit!.whenComplete(() {
+          if (identical(_firefox, firefox)) {
+            _firefox = null;
+          }
+        }),
       );
       _logger.printStatus(
         'Firefox debugging is limited. Breakpoints, stepping, and expression evaluation are not '
@@ -285,6 +297,7 @@ class FirefoxDevice extends WebDevice {
   Future<bool> stopApp(ApplicationPackage? app, {String? userIdentifier}) async {
     final Future<void>? future = _firefox?.close();
     _firefox = null;
+    _browserExit = null;
     await future;
     return true;
   }

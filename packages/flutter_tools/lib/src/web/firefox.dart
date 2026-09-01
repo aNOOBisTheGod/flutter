@@ -234,6 +234,7 @@ class Firefox {
         return 0;
       },
     );
+    var didExit = true;
     await _process.exitCode.timeout(
       const Duration(seconds: 5),
       onTimeout: () async {
@@ -250,6 +251,7 @@ class Firefox {
         return _process.exitCode.timeout(
           const Duration(seconds: 5),
           onTimeout: () {
+            didExit = false;
             _logger.printWarning(
               'Failed to force Firefox (pid: $pid) to exit. Giving up. A Firefox process might '
               'still be running.',
@@ -259,6 +261,8 @@ class Firefox {
         );
       },
     );
-    await _deleteProfile();
+    if (didExit) {
+      await _deleteProfile();
+    }
   }
 }
