@@ -172,6 +172,9 @@ class ResidentWebRunner extends ResidentRunner {
 
   late final useDwdsWebSocketConnection = flutterDevice!.device is! ChromiumDevice;
 
+  // DWDS same-instance reconnects can leave Firefox white after a page refresh.
+  bool get resetDwdsInstanceId => _platform.isWindows && flutterDevice!.device is FirefoxDevice;
+
   @override
   // Web uses a different plugin registry.
   bool get generateDartPluginRegistry => false;
@@ -324,6 +327,7 @@ class ResidentWebRunner extends ResidentRunner {
           useLocalCanvasKit: debuggingOptions.buildInfo.useLocalCanvasKit,
           rootDirectory: fileSystem.directory(projectRootPath),
           useDwdsWebSocketConnection: useDwdsWebSocketConnection,
+          resetDwdsInstanceId: resetDwdsInstanceId,
           webCrossOriginIsolation: debuggingOptions.webCrossOriginIsolation,
           fileSystem: fileSystem,
           logger: logger,

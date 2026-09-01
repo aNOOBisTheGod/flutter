@@ -511,6 +511,45 @@ void main() {
   );
 
   test(
+    'resets the DWDS instance ID in flutter_bootstrap.js when requested',
+    () => testbed.run(() async {
+      globals.fs.file(
+          globals.fs.path.join(
+            globals.artifacts!.getHostArtifact(HostArtifact.flutterJsDirectory).path,
+            'flutter.js',
+          ),
+        )
+        ..createSync(recursive: true)
+        ..writeAsStringSync('flutter.js content');
+
+      webAssetServer = WebAssetServer(
+        httpServer,
+        packages,
+        InternetAddress.loopbackIPv4,
+        <String, String>{},
+        <String, String>{},
+        usesDdcModuleSystem,
+        canaryFeatures,
+        webRenderer: WebRendererMode.canvaskit,
+        useLocalCanvasKit: false,
+        fileSystem: globals.fs,
+        logger: logger,
+        resetDwdsInstanceId: true,
+      );
+
+      final Response response = await webAssetServer.handleRequest(
+        Request('GET', Uri.parse('http://foobar/flutter_bootstrap.js')),
+      );
+
+      expect(response.statusCode, 200);
+      expect(
+        await response.readAsString(),
+        contains("window.sessionStorage.removeItem('dartAppInstanceId');"),
+      );
+    }),
+  );
+
+  test(
     'serves flutter_bootstrap.js with useLocalCanvasKit',
     () => testbed.run(() async {
       globals.fs.file(

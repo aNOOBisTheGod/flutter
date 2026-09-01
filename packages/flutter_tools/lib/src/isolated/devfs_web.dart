@@ -79,6 +79,7 @@ class WebDevFS implements DevFS {
     required this.useLocalCanvasKit,
     required this.rootDirectory,
     this.useDwdsWebSocketConnection = false,
+    this.resetDwdsInstanceId = false,
     required this.webCrossOriginIsolation,
     required this.fileSystem,
     required this.logger,
@@ -124,6 +125,7 @@ class WebDevFS implements DevFS {
   final bool useLocalCanvasKit;
   final WebDevServerConfig webDevServerConfig;
   final bool useDwdsWebSocketConnection;
+  final bool resetDwdsInstanceId;
   final bool webCrossOriginIsolation;
   final FileSystem fileSystem;
   final Logger logger;
@@ -237,6 +239,7 @@ class WebDevFS implements DevFS {
       canaryFeatures: canaryFeatures,
       webDevServerConfig: webDevServerConfig,
       useDwdsWebSocketConnection: useDwdsWebSocketConnection,
+      resetDwdsInstanceId: resetDwdsInstanceId,
       fileSystem: fileSystem,
       logger: logger,
       platform: platform,

@@ -80,6 +80,7 @@ class WebAssetServer implements AssetReader {
     required this.useLocalCanvasKit,
     required this.fileSystem,
     required this.logger,
+    this.resetDwdsInstanceId = false,
     String? baseHref,
     Map<String, String> webDefines = const <String, String>{},
   }) : basePath = WebTemplate.baseHref(htmlTemplate(fileSystem, 'index.html', _kDefaultIndex)),
@@ -222,6 +223,7 @@ class WebAssetServer implements AssetReader {
     bool ddcModuleSystem = false,
     bool canaryFeatures = false,
     bool useDwdsWebSocketConnection = false,
+    bool resetDwdsInstanceId = false,
     required FileSystem fileSystem,
     required Logger logger,
     required Platform platform,
@@ -295,6 +297,7 @@ class WebAssetServer implements AssetReader {
       useLocalCanvasKit: useLocalCanvasKit,
       fileSystem: fileSystem,
       logger: logger,
+      resetDwdsInstanceId: resetDwdsInstanceId,
       baseHref: webDevServerConfig.baseHref,
       webDefines: webDefines,
     );
@@ -627,6 +630,8 @@ class WebAssetServer implements AssetReader {
 
   final bool useLocalCanvasKit;
 
+  final bool resetDwdsInstanceId;
+
   final FileSystem fileSystem;
   final Logger logger;
 
@@ -687,7 +692,7 @@ _flutter.buildConfig = ${jsonEncode(buildConfig)};
       'flutter_bootstrap.js',
       generateDefaultFlutterBootstrapScript(includeServiceWorkerSettings: false),
     );
-    return bootstrapTemplate.withSubstitutions(
+    final String content = bootstrapTemplate.withSubstitutions(
       baseHref: _baseHref ?? '/',
       serviceWorkerVersion: null,
       buildConfig: _buildConfigString,
@@ -695,6 +700,14 @@ _flutter.buildConfig = ${jsonEncode(buildConfig)};
       logger: logger,
       webDefines: _webDefines,
     );
+    if (!resetDwdsInstanceId) {
+      return content;
+    }
+    return '''
+try {
+  window.sessionStorage.removeItem('dartAppInstanceId');
+} catch (_) {}
+$content''';
   }
 
   shelf.Response _serveFlutterBootstrapJs() {
