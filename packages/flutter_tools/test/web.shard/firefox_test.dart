@@ -33,7 +33,7 @@ void main() {
 
   testWithoutContext('findFirefoxExecutable finds a Windows installation', () {
     final fileSystem = MemoryFileSystem.test(style: FileSystemStyle.windows);
-    final firefox = fileSystem.file(r'C:\Program Files\Mozilla Firefox\firefox.exe')
+    final File firefox = fileSystem.file(r'C:\Program Files\Mozilla Firefox\firefox.exe')
       ..createSync(recursive: true);
     final platform = FakePlatform(
       operatingSystem: 'windows',
